@@ -35,6 +35,9 @@ function runSolutions(sourceCount) {
     } catch (e) {
       reject(e);
     }
+
+    // resolve();
+
   }).then(() => {
     return new Promise((resolve, reject) => {
       /**

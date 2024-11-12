@@ -10,40 +10,43 @@ const { pop, push } = require("./heap-sort");
 // tried to add items to a heap and then sort, but ran into memory issues
 
 module.exports = (logSources, printer) => {
-  
-  // found that this wasn't suitable for higher work loads
-  async function finishSort(sortedEntries) {
-    while (sortedEntries.length > 0) {
-      const [_, sourceIndex, entry] = pop(sortedEntries);
-      printer.print(entry);
-      
-      const nextEntry = await logSources[sourceIndex].popAsync();
-      
-      if (nextEntry !== false) {
-        push(sortedEntries, [nextEntry.date.getTime(), sourceIndex, nextEntry]);
-      }
-    }
-  }
-  
-  return new Promise((resolve, reject) => {
-    let sortedEntries = [];
-    let logSourceCount = logSources.length;
 
-    Promise.all(logSources.map(async (source, index) => {
-      return source.popAsync().then(sourceEntry => {
-        if (sourceEntry !== false) {
-          push(sortedEntries, [sourceEntry.date.getTime(), index, sourceEntry]);
-        }
-        else {
-          logSourceCount--;
-        }
+  
+  return new Promise(async (resolve, reject) => {
+    let sortedEntries = [];
+    const bufferSize = logSources.length - 1;
+    const entryPromises = new Array(bufferSize);
+
+    for (let i = 0; i < bufferSize; i++) {
+      entryPromises[i] = logSources[i].popAsync()
+        .then(entry => ({ entry, sourceIndex: i  }));
+    }
+
+    // Process entries as they become available
+    while (entryPromises.length > 0 || sortedEntries.length > 0) {
+      // Wait for all current promises to resolve
+      const results = await Promise.all(entryPromises);
+      
+      if (results.length === 0) break;
+      
+      entryPromises.length = 0;
+
+      // Filter out false results (ended sources)
+      results.forEach(element => {
+        if (!element || element.entry === false) return;
+        const i = element.sourceIndex;
+        push(sortedEntries, [element.entry.date.getTime(), i, element.entry]);
+
+        entryPromises[i] = logSources[i].popAsync()
+          .then(entry => ({ entry, sourceIndex: i  }));
       });
-    }))
-    .then(() => {
-      finishSort(sortedEntries).then(() => {
-        printer.done();
-        resolve();
-      });
-    });
+      
+      const earliest = pop(sortedEntries);
+      
+      printer.print(earliest[2]);
+    }
+
+    printer.done("async-sorted-merge-stats.txt");
+    resolve();
   })
 };
