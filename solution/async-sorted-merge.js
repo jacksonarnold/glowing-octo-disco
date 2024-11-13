@@ -3,50 +3,105 @@
 // Print all entries, across all of the *async* sources, in chronological order.
 
 const { pop, push } = require("./heap-sort");
+const { Readable } = require('stream');
 
+// create readable stream for log source
+const createReadableStream = (logSource) => {
+  return new Readable({
+    objectMode: true,
+    highWaterMark: 20,
+    async read() {
+      try {
+        const entry = await logSource.popAsync();
+        if (!this.push(entry)) {
+          this.pause();
+        }
+      } 
+      catch (error) {
+        console.log('Readable Error: ', error);
+        this.destroy(error);
+      }
+    }
+  });
+};
 
-// the same solution as sync-sorted-merge.js, but with async pop
-// found that this solution wasn't suitable for higher work loads
-// tried to add items to a heap and then sort, but ran into memory issues
+const addLogToEntries = (sortedEntries, index, entry) => {
+  push(sortedEntries, [entry.date.getTime(), index, entry]);
+};
 
-module.exports = (logSources, printer) => {
+// waits for a stream to become readable and returns the next entry
+const waitReadableLog = async (sourceStream) => {
+  await new Promise((resolve) => sourceStream.once("readable", resolve));
+  return sourceStream.read();
+};
 
-  
+// retrieves the next log entry from a stream
+const processNextLog = async (sourceStream) => {
+  let nextEntry = sourceStream.read();
+
+  if (nextEntry === null) {
+    nextEntry = await waitReadableLog(sourceStream);
+  }
+
+  if (nextEntry === false) {
+    sourceStream.destroy();
+    return null;
+  }
+
+  return nextEntry;
+};
+
+module.exports = async (logSources, printer) => {
+
   return new Promise(async (resolve, reject) => {
     let sortedEntries = [];
-    const bufferSize = logSources.length - 1;
-    const entryPromises = new Array(bufferSize);
-
-    for (let i = 0; i < bufferSize; i++) {
-      entryPromises[i] = logSources[i].popAsync()
-        .then(entry => ({ entry, sourceIndex: i  }));
+    let sourceStreams = new Map();
+  
+    // create a readable stream for each source and load first log entries
+    const logStreamPromises = logSources.map(async (logSource, index) => {
+  
+      const stream = createReadableStream(logSource);
+  
+      // read first entry from stream
+      let firstEntry = await waitReadableLog(stream);
+  
+      // if entry is false, destroy stream and don't add to map
+      if (firstEntry === false) {
+        stream.destroy();
+        return null;
+      }
+  
+      // add source stream to map and push first entry
+      sourceStreams.set(index, stream);
+      addLogToEntries(sortedEntries, index, firstEntry);
+    });
+  
+    await Promise.all(logStreamPromises);
+  
+    // sort and print entries
+    while (sortedEntries.length > 0) {
+  
+      // pop and print next item
+      const [_, sourceIndex, entry] = pop(sortedEntries);
+      printer.print(entry);
+  
+      if (!sourceStreams.has(sourceIndex)) continue;
+      
+      // get next log
+      const stream = sourceStreams.get(sourceIndex);
+      const nextEntry = await processNextLog(stream);
+  
+      // if null is returned from processNextLog, then the source is drained
+      if (!nextEntry || nextEntry === null) {
+        stream.destroy();
+        sourceStreams.delete(sourceIndex);
+      }
+      else {
+        addLogToEntries(sortedEntries, sourceIndex,  nextEntry);
+      }
     }
-
-    // Process entries as they become available
-    while (entryPromises.length > 0 || sortedEntries.length > 0) {
-      // Wait for all current promises to resolve
-      const results = await Promise.all(entryPromises);
-      
-      if (results.length === 0) break;
-      
-      entryPromises.length = 0;
-
-      // Filter out false results (ended sources)
-      results.forEach(element => {
-        if (!element || element.entry === false) return;
-        const i = element.sourceIndex;
-        push(sortedEntries, [element.entry.date.getTime(), i, element.entry]);
-
-        entryPromises[i] = logSources[i].popAsync()
-          .then(entry => ({ entry, sourceIndex: i  }));
-      });
-      
-      const earliest = pop(sortedEntries);
-      
-      printer.print(earliest[2]);
-    }
-
-    printer.done("async-sorted-merge-stats.txt");
-    resolve();
-  })
+  
+    printer.done();
+    resolve("Async sort complete.");
+  });
 };
