@@ -19,6 +19,10 @@ const push = (arr, value) => {
   heapifyUp(arr, arr.length - 1);
 };
 
+const addLogToEntries = (sortedEntries, index, entry) => {
+  push(sortedEntries, [entry.date.getTime(), index, entry]);
+};
+
 const buildHeap = (arr) => {
   const lastLeaf = Math.floor(arr.length / 2) - 1;
   for (let i = lastLeaf; i >= 0; i--) {
@@ -56,7 +60,6 @@ const heapifyDown = (arr, i) => {
 };
 
 module.exports = {
-    buildHeap,
     pop,
-    push
+    addLogToEntries
 };

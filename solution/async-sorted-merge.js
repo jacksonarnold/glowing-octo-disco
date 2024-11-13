@@ -2,7 +2,7 @@
 
 // Print all entries, across all of the *async* sources, in chronological order.
 
-const { pop, push } = require("./heap-sort");
+const { pop, addLogToEntries } = require("./heap-sort");
 const { Readable } = require('stream');
 
 // create readable stream for log source
@@ -23,10 +23,6 @@ const createReadableStream = (logSource) => {
       }
     }
   });
-};
-
-const addLogToEntries = (sortedEntries, index, entry) => {
-  push(sortedEntries, [entry.date.getTime(), index, entry]);
 };
 
 // waits for a stream to become readable and returns the next entry
@@ -52,7 +48,7 @@ const processNextLog = async (sourceStream) => {
 };
 
 module.exports = async (logSources, printer) => {
-
+    
   return new Promise(async (resolve, reject) => {
     let sortedEntries = [];
     let sourceStreams = new Map();

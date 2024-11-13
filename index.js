@@ -35,9 +35,6 @@ function runSolutions(sourceCount) {
     } catch (e) {
       reject(e);
     }
-
-    // resolve();
-
   }).then(() => {
     return new Promise((resolve, reject) => {
       /**
@@ -57,7 +54,7 @@ function runSolutions(sourceCount) {
       for (let i = 0; i < sourceCount; i++) {
         asyncLogSources.push(new LogSource());
       }
-      require("./solution/async-sorted-merge")(asyncLogSources, new Printer())
+      require("./solution/working-async")(asyncLogSources, new Printer())
         .then(resolve)
         .catch(reject);
     });
